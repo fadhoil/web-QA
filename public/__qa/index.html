@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA Recorder</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--bd:#d0d0d0;--mut:#666;--ok:#1a7f37;--bad:#c62828;--acc:#2563eb;--row:#f6f6f6}
+@media(prefers-color-scheme:dark){:root{--bg:#161616;--fg:#eee;--bd:#3a3a3a;--mut:#999;--ok:#4ade80;--bad:#f87171;--acc:#60a5fa;--row:#202020}}
+*{box-sizing:border-box}
+body{margin:0;height:100vh;display:flex;flex-direction:column;font:14px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--bd);flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:6px 8px}
+button{cursor:pointer}button:hover:not(:disabled){border-color:var(--acc)}button:disabled{opacity:.45;cursor:default}
+button.on{background:var(--bad);color:#fff;border-color:var(--bad)}
+button.tab.on{background:var(--acc);border-color:var(--acc)}
+#url{flex:1;min-width:220px}
+main{flex:1;display:flex;min-height:0}
+#panel{flex:1;display:flex;flex-direction:column;min-width:0}
+#tabs{display:flex;gap:2px;padding:4px 4px 0;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+#tabs button{border-bottom-left-radius:0;border-bottom-right-radius:0;padding:3px 8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#tabs button.cur{border-color:var(--acc);font-weight:600}
+#frames{flex:1;position:relative}
+#frames iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
+#frames iframe:not(.act){display:none}
+#list{width:220px;border-right:1px solid var(--bd);display:flex;flex-direction:column;min-height:0;padding:8px;gap:6px}
+#items{flex:1;overflow:auto;display:flex;flex-direction:column;gap:4px}
+#items button{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#brand{padding-top:6px;text-align:center}
+#brand img{display:block;max-width:100%;max-height:min(180px,22vh);width:auto;height:auto;margin:0 auto}
+#items button.cur{border-color:var(--acc);font-weight:600}
+aside{width:480px;border-left:1px solid var(--bd);display:flex;flex-direction:column;min-height:0}
+#steps{flex:1;overflow:auto;padding:6px}
+.step{display:grid;grid-template-columns:40px 92px 1fr 1fr 22px 22px 22px;gap:4px;margin-bottom:4px;padding:4px;background:var(--row);border-radius:6px;border-left:4px solid transparent}
+.step.ok{border-left-color:var(--ok)}.step.bad{border-left-color:var(--bad)}
+.step input,.step select,.step button{padding:3px 2px;min-width:0}
+.step span{color:var(--mut);align-self:center;text-align:center}
+#msg{padding:8px;border-top:1px solid var(--bd);color:var(--mut);min-height:36px;white-space:pre-wrap}
+#login{position:fixed;inset:0;background:var(--bg);display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;z-index:9}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="login" hidden>
+  <input id="pw" type="password" placeholder="Password" autofocus>
+  <button id="loginBtn">Masuk</button>
+  <span id="pwerr" style="color:var(--bad)"></span>
+</div>
+
+<header>
+  <input id="url" placeholder="https://website-yang-mau-di-QA.com" aria-label="URL website">
+  <button id="go">Buka</button>
+  <span id="recTools">
+    <button id="rec">● Rekam</button>
+    <button id="asrt" title="Klik elemen di website untuk jadikan assertion teks">✓ Assert</button>
+  </span>
+  <button id="run">▶ Jalankan</button>
+  <label title="Ambil screenshot setiap langkah saat menjalankan (untuk laporan)"><input id="shot" type="checkbox" checked style="padding:0"> Screenshot</label>
+</header>
+
+<main>
+  <section id="list">
+    <button id="new">+ Skenario baru</button>
+    <div style="display:flex;gap:4px"><input id="search" placeholder="Cari skenario…" aria-label="Cari skenario" style="flex:1;min-width:0"><button id="reload" title="Muat ulang daftar">⟳</button></div>
+    <div id="items"></div>
+    <div id="brand"><img src="logo.png" alt="ADO - Learn, Work, Play, Grow, Together"></div>
+  </section>
+  <section id="panel"><div id="tabs" hidden></div><div id="frames"></div></section>
+  <aside>
+    <header>
+      <input id="name" placeholder="Nama skenario" style="flex:1;min-width:0">
+      <button id="save">Simpan ke DB</button>
+      <button id="dl">⬇ JSON</button>
+    </header>
+    <header>
+      <button id="up">⬆ Upload (ganti)</button>
+      <button id="merge" title="Tambahkan langkah dari satu atau beberapa file ke skenario sekarang">⊕ Gabung file</button>
+      <input id="file" type="file" accept=".json" multiple hidden>
+      <input id="mergefile" type="file" accept=".json" multiple hidden>
+    </header>
+    <div id="steps"></div>
+    <header><button id="add">+ Langkah</button></header>
+    <header>
+      <select id="lang" aria-label="Bahasa laporan"><option value="id">Laporan: Indonesia</option><option value="en">Report: English</option></select>
+      <select id="fmt" aria-label="Format laporan">
+        <option value="html">HTML</option><option value="md">Markdown (.md)</option>
+        <option value="pdf">PDF (cetak)</option><option value="docx">Word (.docx)</option>
+      </select>
+      <button id="exp" disabled>Ekspor hasil</button>
+    </header>
+    <div id="msg"></div>
+  </aside>
+</main>
+
+<script src="jszip.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const urlIn = $('#url'), box = $('#steps');
+const api = (p, o) => fetch('/__qa/api/' + p, o);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const say = t => $('#msg').textContent = t;
+let steps = [], res = [], meta = {}, recording = false, assertMode = false, base = '';
+let rows = [], curId = null, dbOk = false, dbErr = '';
+let running = false, dlgQueue = [], dlgSeen = [], curCtx = null; // dialog bawaan browser saat replay
+
+/* ---------- auth ---------- */
+async function boot() {
+  if ((await api('ping')).ok) return loadDb();
+  $('#login').hidden = false;
+}
+$('#loginBtn').onclick = async () => {
+  const r = await api('login', { method: 'POST', body: JSON.stringify({ password: $('#pw').value }) });
+  if (r.ok) { $('#login').hidden = true; loadDb(); } else $('#pwerr').textContent = 'password salah';
+};
+// jangan return false dari onkeydown: itu memblokir ketikan
+$('#pw').onkeydown = e => { if (e.key === 'Enter') $('#loginBtn').click(); };
+
+/* ---------- skenario baru ---------- */
+$('#new').onclick = () => {
+  steps = []; res = []; meta = {}; curId = null; $('#name').value = ''; setRec(false); setAssert(false);
+  render(); drawList(); say('Skenario baru. Buka URL lalu klik Rekam.');
+};
+
+/* ---------- daftar skenario di DB ---------- */
+async function loadDb() {
+  const hint = { 401: 'key ditolak: pakai service_role / secret key', 404: 'URL salah atau tabel "scenarios" belum dibuat', 403: 'role key belum punya izin ke tabel: jalankan perintah GRANT di README' };
+  try {
+    const r = await api('scenarios');
+    dbOk = r.ok; dbErr = ''; rows = [];
+    if (r.ok) rows = await r.json();
+    else {
+      const j = await r.json().catch(() => ({}));
+      dbErr = `HTTP ${r.status}: ${j.error || j.message || ''} ${hint[r.status] || ''}`.trim();
+    }
+  } catch (e) { dbOk = false; dbErr = 'gagal menghubungi server: ' + e.message; rows = []; }
+  drawList();
+}
+function drawList() {
+  const k = $('#search').value.toLowerCase(), list = $('#items');
+  list.innerHTML = '';
+  const shown = rows.filter(x => x.name.toLowerCase().includes(k));
+  if (!shown.length) {
+    const p = document.createElement('div'); p.style.color = 'var(--mut)';
+    p.textContent = dbOk ? 'Tidak ada skenario.' : 'Supabase error: ' + dbErr;
+    list.append(p);
+  }
+  shown.forEach(x => {
+    const b = document.createElement('button');
+    b.textContent = x.name; b.title = new Date(x.created_at).toLocaleString();
+    if (x.id === curId) b.className = 'cur';
+    b.onclick = () => openDb(x.id);
+    list.append(b);
+  });
+}
+$('#search').oninput = drawList;
+$('#reload').onclick = loadDb;
+async function openDb(id) {
+  const r = await api('scenarios?id=' + id);
+  const row = r.ok && (await r.json())[0];
+  if (!row) return say('Gagal membuka skenario.');
+  load({ name: row.name, ...row.data }); curId = id; drawList();
+}
+$('#save').onclick = async () => {
+  const name = $('#name').value.trim();
+  if (!dbOk) return say('Supabase belum bisa dipakai: ' + dbErr);
+  if (!name || !steps.length) return say('Isi nama skenario dan langkah dulu.');
+  const ex = rows.find(x => x.name === name);
+  if (ex && !confirm(`Skenario "${name}" sudah ada. Timpa?`)) return;
+  const r = await api('scenarios' + (ex ? '?id=' + ex.id : ''), {
+    method: ex ? 'PATCH' : 'POST', body: JSON.stringify({ name, data: { baseUrl: base, steps } }) });
+  if (!r.ok) return say('Gagal simpan: ' + r.status);
+  const saved = (await r.json())[0]; curId = saved?.id || null;
+  say(`Tersimpan: ${name}`); loadDb();
+};
+
+/* ---------- panel tab ---------- */
+let tabs = [], active = 0, nextId = 1;
+const T = id => tabs.find(t => t.id === id);
+const NEWT = t => t && !['_self', '_top', '_parent'].includes(t);
+const mine = o => o === location.origin || o === base; // origin panel QA atau origin website target
+function mkTab(id, name) {
+  const fr = document.createElement('iframe');
+  fr.name = name || 'qa-tab-' + id; fr.title = 'Tab ' + (id + 1);
+  fr.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-downloads');
+  fr.onload = () => onLoad(id);
+  const t = { id, f: fr, opener: null, label: 'Tab ' + (id + 1), reqs: [], navAt: 0, loadedAt: 0 };
+  tabs.push(t); $('#frames').append(fr); show(id); return t;
+}
+const newTabFor = (opener, name) => { const t = mkTab(nextId++, name); t.opener = opener; return t; };
+function show(id) {
+  active = id;
+  tabs.forEach(t => t.f.classList.toggle('act', t.id === id));
+  drawTabs();
+  try {
+    const d = T(id).f.contentDocument;
+    if (base && d.location.href !== 'about:blank') urlIn.value = base + d.location.pathname + d.location.search;
+  } catch {}
+}
+function drawTabs() {
+  const bar = $('#tabs'); bar.hidden = tabs.length < 2; bar.innerHTML = '';
+  tabs.forEach(t => {
+    const b = document.createElement('button'); b.textContent = t.label; b.onclick = () => show(t.id);
+    if (t.id === active) b.className = 'cur';
+    bar.append(b);
+    if (t.id) {
+      const x = document.createElement('button'); x.textContent = '×'; x.title = 'Tutup tab'; x.onclick = () => closeTab(t.id);
+      bar.append(x);
+    }
+  });
+}
+function closeTab(id) {
+  const t = T(id); if (!t || !id) return;
+  tabs = tabs.filter(x => x !== t); t.f.remove();
+  if (active === id) show((T(t.opener) || tabs[tabs.length - 1]).id); else drawTabs();
+}
+function resetTabs() { tabs.filter(t => t.id).forEach(t => t.f.remove()); tabs = tabs.filter(t => !t.id); nextId = 1; show(0); }
+// Dipanggil hook.js (di dalam halaman target) dan onLoad: window.open/close/opener -> tab panel ini.
+// Jendela di dalam iframe bersarang (mis. <dialog><iframe>) milik tab mana, dan jalur iframe-nya dari dokumen tab.
+const tabOf = w => { try { for (let x = w; x; x = x.parent === x ? null : x.parent) { const t = tabs.find(k => k.f === x.frameElement); if (t) return t; } } catch {} return null; };
+const framePath = w => {
+  const out = [];
+  try { for (let x = w; x && x.frameElement && !tabs.some(k => k.f === x.frameElement); x = x.parent) out.unshift(sel(x.frameElement)); } catch {}
+  return out.join(' >> ');
+};
+window.__qa = { patch(w) {
+  const t = tabOf(w);
+  if (!t || w.__qaPatched) return; w.__qaPatched = 1;
+  const nested = w.frameElement !== t.f; // iframe bersarang di dalam halaman tab
+  attach(w.document, t.id, framePath(w)); // dipasang sejak awal parsing, bukan menunggu event load iframe
+  const real = w.open.bind(w);
+  w.open = (u, name) => {
+    let href = null;
+    try { if (u && u !== 'about:blank') href = new URL(u, w.location.href); } catch {}
+    if (href && !mine(href.origin)) return real(u, name); // domain lain: tab browser asli
+    const nm = name && !name.startsWith('_') ? name : '';
+    const n = (nm && tabs.find(x => x.f.name === nm)) || newTabFor(t.id, nm);
+    show(n.id);
+    if (href) n.f.src = href.pathname + href.search + href.hash;
+    return n.f.contentWindow;
+  };
+  // ---- dialog bawaan browser: saat merekam tetap tampil dan jawabanmu dicatat; saat replay dijawab otomatis ----
+  // ---- status "halaman siap": navigasi berjalan, load event, permintaan XHR/fetch yang masih jalan ----
+  w.addEventListener('beforeunload', () => { t.navAt = performance.now(); });
+  w.addEventListener('load', () => { t.loadedAt = performance.now(); }, { once: true });
+  const trk = () => { const st = performance.now(); t.reqs.push(st); return () => { const i = t.reqs.indexOf(st); if (i >= 0) t.reqs.splice(i, 1); }; };
+  try {
+    const xs = w.XMLHttpRequest.prototype.send;
+    w.XMLHttpRequest.prototype.send = function (...a) { const done = trk(); this.addEventListener('loadend', done, { once: true }); return xs.apply(this, a); };
+    const f0 = w.fetch;
+    if (f0) w.fetch = (...a) => { const done = trk(), p = f0.apply(w, a); p.then(done, done); return p; };
+  } catch {}
+  const where = { ...(t.id ? { tab: t.id } : {}), ...(framePath(w) ? { frame: framePath(w) } : {}) };
+  for (const kind of ['alert', 'confirm', 'prompt']) {
+    const real = w[kind].bind(w);
+    w[kind] = (msg, def) => {
+      const text = msg === undefined ? '' : String(msg);
+      if (running) return dialogAnswer(kind, text, def);
+      const r = real(msg, def);
+      if (recording) add({ action: 'dialog', kind, selector: text, ...where,
+        value: kind === 'confirm' ? (r ? 'accept' : 'dismiss') : kind === 'prompt' ? (r === null ? 'dismiss' : 'accept:' + r) : 'accept' });
+      return r;
+    };
+  }
+  if (nested) return; // close/opener hanya untuk jendela tab
+  w.close = () => closeTab(t.id);
+  const op = t.opener !== null && T(t.opener);
+  if (op) { try { Object.defineProperty(w, 'opener', { value: op.f.contentWindow, configurable: true, writable: true }); } catch {} }
+} };
+// <a target=_blank> dan <form target=_blank>: buka di tab panel baru. Navigasi dilakukan dari halaman induk,
+// karena iframe ber-sandbox tidak boleh menavigasi iframe lain.
+function openIn(tg, opener) {
+  const n = (tg !== '_blank' && tabs.find(x => x.f.name === tg)) || newTabFor(opener, tg === '_blank' ? '' : tg);
+  show(n.id); return n;
+}
+function submitInTab(fm, submitter, n) {
+  const pf = document.createElement('form');
+  pf.method = fm.method; pf.action = fm.action; pf.target = n.f.name; pf.enctype = fm.enctype; pf.hidden = true;
+  for (const [k, v] of new FormData(fm, submitter)) { // shortcut: field file tidak ikut
+    if (typeof v !== 'string') continue;
+    const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v; pf.append(i);
+  }
+  document.body.append(pf); pf.submit(); pf.remove();
+}
+function onLoad(id) {
+  const t = T(id); if (!t || !base) return;
+  let d; try { d = t.f.contentDocument; } catch { return; }
+  if (!d || !d.location || d.location.href === 'about:blank') return;
+  t.label = (d.title || d.location.pathname).slice(0, 18) || t.label;
+  t.loadedAt = performance.now();
+  window.__qa.patch(t.f.contentWindow);
+  if (id === active) urlIn.value = base + d.location.pathname + d.location.search;
+  attach(d, id); drawTabs();
+}
+
+/* ---------- navigasi ---------- */
+function go(u) {
+  try { u = new URL(/^https?:/i.test(u) ? u : 'https://' + u); } catch { return say('URL salah'); }
+  base = u.origin; resetTabs();
+  T(0).f.src = '/__qa/api/open?u=' + encodeURIComponent(u.href);
+}
+$('#go').onclick = () => go(urlIn.value);
+urlIn.onkeydown = e => { if (e.key === 'Enter') go(urlIn.value); };
+
+/* ---------- selector ---------- */
+const q = s => CSS.escape(s);
+function sel(el) {
+  const d = el.ownerDocument;
+  const one = s => { try { return d.querySelectorAll(s).length === 1; } catch { return false; } };
+  const tag = el.tagName.toLowerCase();
+  if (el.id && one('#' + q(el.id))) return '#' + q(el.id);
+  for (const a of ['data-testid', 'name', 'aria-label']) {
+    const v = el.getAttribute(a);
+    if (v && one(`${tag}[${a}="${v}"]`)) return `${tag}[${a}="${v}"]`;
+  }
+  const t = el.matches('a,button,summary,label') && el.textContent.trim();
+  if (t && t.length < 40 &&
+      [...d.querySelectorAll('a,button,summary,label')].filter(x => x.textContent.trim() === t).length === 1)
+    return 'text=' + t;
+  const c = el.matches('td,th,li') && el.textContent.trim(); // baris/sel daftar data (popup F2): pilih lewat teks, bukan urutan
+  if (c && c.length < 60 && [...d.querySelectorAll('td,th,li')].filter(x => x.textContent.trim() === c).length === 1)
+    return 'cell=' + c;
+  const path = []; let anchored = false;
+  for (; el && el.nodeType === 1 && el !== d.body; el = el.parentElement) {
+    if (el.id && one('#' + q(el.id))) { path.unshift('#' + q(el.id)); anchored = true; break; }
+    const sib = [...el.parentElement.children].filter(x => x.tagName === el.tagName);
+    path.unshift(el.tagName.toLowerCase() + (sib.length > 1 ? `:nth-of-type(${sib.indexOf(el) + 1})` : ''));
+  }
+  if (!anchored) path.unshift('body');
+  return path.join(' > ');
+}
+// Halaman dianggap siap bila: tidak sedang navigasi, dokumen (+iframe bersarang) complete, gambar selesai, tidak ada XHR/fetch
+// yang jalan (yang lebih dari 8 dtk diabaikan: long-poll/websocket), dan keadaan itu stabil `quiet` ms.
+function docIdle(d) {
+  if (!d) return true;
+  if (d.readyState !== 'complete') return false;
+  for (const im of d.images) if (!im.complete && im.loading !== 'lazy') return false;
+  for (const f of d.querySelectorAll('iframe,frame')) {
+    let fd = null; try { fd = f.contentDocument; } catch {}
+    if (fd && fd.location.href !== 'about:blank' && !docIdle(fd)) return false;
+  }
+  return true;
+}
+function isIdle(t) {
+  const now = performance.now();
+  if (t.navAt > t.loadedAt && now - t.navAt < 20000) return false; // navigasi dimulai tapi belum selesai dimuat
+  if (t.reqs.some(st => now - st < 8000)) return false;
+  return docIdle(t.f.contentDocument);
+}
+async function settle(t, max = 15000, quiet = 300) {
+  const start = performance.now(); let since = 0;
+  for (;;) {
+    let ok = true; try { ok = !tabs.includes(t) || isIdle(t); } catch {}
+    const now = performance.now();
+    if (!ok) since = 0; else if (!since) since = now;
+    if (since && now - since >= quiet) return true;
+    if (now - start > max) return false;
+    await sleep(100);
+  }
+}
+// Jawaban otomatis saat replay: diambil dari langkah `dialog` yang menyusul langkah pemicunya (dipasang di antrean sebelum langkah itu jalan).
+function dialogAnswer(kind, text, def) {
+  const h = dlgQueue[0], exp = h && h.kind === kind ? dlgQueue.shift() : null;
+  dlgSeen.push({ kind, text, expIdx: exp ? exp.step : -1 });
+  if (!exp && curCtx) curCtx.note = (curCtx.note ? curCtx.note + '; ' : '') + `dialog ${kind} tak terduga dijawab OK otomatis: "${text}"`;
+  const accept = exp ? exp.value !== 'dismiss' : true;
+  if (kind === 'confirm') return accept;
+  if (kind === 'alert') return undefined;
+  if (!accept) return null;
+  return exp && exp.value.startsWith('accept:') ? exp.value.slice(7) : (def ?? '');
+}
+function frameDoc(top, path) { // path: '#a >> #b' = selector tiap iframe di dokumen induknya
+  let d = top;
+  for (const sl of path.split(' >> ')) { const fe = find(d, sl); if (!fe || !fe.contentDocument) return null; d = fe.contentDocument; }
+  return d;
+}
+function find(d, s) {
+  if (s.startsWith('text='))
+    return [...d.querySelectorAll('a,button,summary,label,[role=button]')].find(x => x.textContent.trim() === s.slice(5));
+  if (s.startsWith('cell='))
+    return [...d.querySelectorAll('td,th,li')].find(x => x.textContent.trim() === s.slice(5));
+  try { return d.querySelector(s); } catch { return null; }
+}
+
+/* ---------- rekam ---------- */
+function add(s) {
+  const last = steps[steps.length - 1];
+  if (last && last.action === 'type' && s.action === 'type' && last.selector === s.selector && last.tab === s.tab && last.frame === s.frame) last.value = s.value;
+  else steps.push(s);
+  res = []; render();
+}
+const typeStep = (el, tab, frame) => {
+  const s = { action: el.tagName === 'SELECT' ? 'select' : 'type', selector: sel(el), value: el.value };
+  if (tab) s.tab = tab;
+  if (frame) s.frame = frame;
+  if (el.type === 'password') s.sensitive = true; // disamarkan di laporan; JSON tetap menyimpan nilainya
+  return s;
+};
+// nilai yang sama sudah tercatat tepat sebelumnya (boleh diselingi langkah press)? mis. blur karena popup F2 memicu change lagi
+const dupType = ts => {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const x = steps[i];
+    if (x.action === 'press' && (x.tab || 0) === (ts.tab || 0) && (x.frame || '') === (ts.frame || '')) continue;
+    return (x.action === 'type' || x.action === 'select') && x.selector === ts.selector && x.value === ts.value && (x.tab || 0) === (ts.tab || 0) && (x.frame || '') === (ts.frame || '');
+  }
+  return false;
+};
+// Field yang isinya diketik user. Klik di sini hanya memberi fokus (tidak direkam); tombol bergambar/reset/file dan sejenisnya
+// BUKAN termasuk: kliknya harus direkam.
+const TEXTY = 'input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=image]):not([type=reset]):not([type=file]):not([type=range]):not([type=color]):not([type=hidden]),textarea,select';
+// Nama yang dibaca manusia untuk elemen (title, alt, value tombol, teks), untuk laporan. Tombol ikon biasanya hanya punya title/alt.
+const labelOf = el => String(el.getAttribute?.('title') || el.getAttribute?.('alt') || (/^(button|submit|reset)$/.test(el.type) ? el.value : '') || el.textContent || '')
+  .replace(/\s+/g, ' ').trim().slice(0, 60);
+function attach(d, tabId = 0, frame = '') {
+  if (d.__qa) return; d.__qa = 1;
+  const S = o => ({ ...o, ...(tabId ? { tab: tabId } : {}), ...(frame ? { frame } : {}) });
+  // ---- hover yang memunculkan sub menu direkam sebagai langkah "hover" (sebelum klik berikutnya) ----
+  const muts = [], cand = [];
+  // mutasi saat halaman dimuat (+0,5 dtk) bukan akibat hover; kursor yang diam memicu mouseover saat halaman dirender
+  let settleUntil = d.readyState === 'complete' ? performance.now() + 500 : Infinity;
+  try { d.defaultView.addEventListener('load', () => { settleUntil = performance.now() + 500; }, { once: true }); } catch {}
+  try {
+    new d.defaultView.MutationObserver(list => {
+      const t = performance.now();
+      if (t < settleUntil) return;
+      for (const m of list) {
+        if (m.type === 'childList') m.addedNodes.forEach(n => { if (n.nodeType === 1) muts.push({ t, target: n }); }); // teks/jam berjalan diabaikan
+        else muts.push({ t, target: m.target });
+      }
+      if (muts.length > 200) muts.splice(0, muts.length - 100);
+    }).observe(d.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+  } catch {}
+  let lastH = null, curHover = null, lastMoveT = 0, mx = -1, my = -1;
+  d.addEventListener('mousemove', e => { // hanya gerakan yang benar-benar mengubah posisi kursor
+    if (e.isTrusted && (e.clientX !== mx || e.clientY !== my)) { lastMoveT = performance.now(); mx = e.clientX; my = e.clientY; }
+  }, true);
+  d.addEventListener('mouseover', e => {
+    if (!recording || !e.isTrusted) return;
+    const ov = e.target.closest?.('[onmouseover]'); // menu ASP.NET: <td onmouseover="Menu_HoverStatic(this)">
+    const h = (ov && ov !== d.body && ov !== d.documentElement ? ov : e.target.closest?.('[id],a,li,td,button')) || e.target;
+    if (h === lastH) return;
+    const prev = lastH; lastH = h;
+    const rel = (a, b) => a.contains(b) || b.contains(a);
+    const skipPrev = prev && prev !== d.body && prev !== d.documentElement;
+    const t0 = performance.now();
+    // perubahan dikaitkan ke hover TERAKHIR sebelum kursor pindah; yang terjadi sesudah hover berikutnya milik hover itu
+    if (curHover) curHover.tEnd = Math.min(curHover.tEnd, t0 - 1);
+    const me = curHover = { tEnd: t0 + 300 };
+    setTimeout(() => {
+      // mouseover tanpa gerakan kursor di sekitarnya (-200..+320 ms) = palsu, dipicu render ulang di bawah kursor yang diam
+      // (mouseover datang sebelum mousemove pertama, jadi jendela waktunya mencakup sesudahnya)
+      if (lastMoveT < t0 - 200) return;
+      // elemen LAIN (bukan dirinya, anak, atau induknya) berubah tak lama setelah hover = sub menu terbuka;
+      // perubahan akibat mouseout item sebelumnya (prev) bukan sub menu milik h
+      const hit = muts.some(m => m.t >= t0 - 5 && m.t <= me.tEnd && !rel(m.target, h) && !(skipPrev && rel(m.target, prev)));
+      if (hit && !cand.some(c => c.el === h)) cand.push({ el: h, t: t0 });
+    }, 320);
+  }, true);
+  // bubble phase: jalan setelah handler halaman; kalau halaman sudah preventDefault (mis. window.open sendiri), dilewati
+  d.addEventListener('click', e => {
+    const a = e.target.closest?.('a[href],area[href]');
+    if (!a || e.defaultPrevented) return;
+    const h = a.getAttribute('href') || '';
+    if (/^(javascript:|#)/i.test(h)) return;
+    const tg = a.target || d.querySelector('base[target]')?.target;
+    let same = false; try { same = mine(new URL(a.href).origin); } catch {}
+    if (same && NEWT(tg)) {
+      e.preventDefault();
+      const u = new URL(a.href), n = openIn(tg, tabId);
+      n.f.src = u.pathname + u.search + u.hash;
+    }
+  });
+  d.addEventListener('submit', e => {
+    const fm = e.target; if (e.defaultPrevented || !fm.matches?.('form')) return;
+    const tg = fm.target || d.querySelector('base[target]')?.target;
+    if (NEWT(tg)) { e.preventDefault(); submitInTab(fm, e.submitter, openIn(tg, tabId)); }
+  });
+  d.addEventListener('click', e => {
+    if (!recording || !e.isTrusted) return;
+    const el = e.target.closest?.('a,button,input,select,textarea,label,summary,[role=button]') || e.target;
+    if (assertMode) {
+      e.preventDefault(); e.stopPropagation();
+      add(S({ action: 'assertText', selector: sel(el), value: (el.innerText || el.value || '').trim().slice(0, 80) }));
+      return setAssert(false);
+    }
+    if (el.tagName === 'LABEL' && el.control) return; // klik control-nya sendiri yang direkam
+    if (el.matches(TEXTY)) return;
+    const now = performance.now();
+    cand.splice(0).forEach(c => { if (now - c.t < 15000 && !el.contains(c.el)) add(S({ action: 'hover', selector: sel(c.el), value: '' })); });
+    const lb = labelOf(el), sl = sel(el);
+    add(S({ action: 'click', selector: sl, value: '', ...(lb && !/^(text|cell)=/.test(sl) ? { label: lb } : {}) }));
+  }, true);
+  d.addEventListener('change', e => {
+    const el = e.target;
+    if (!recording || !e.isTrusted || !el.matches?.(TEXTY)) return;
+    const ts = typeStep(el, tabId, frame);
+    if (!dupType(ts)) add(ts);
+  }, true);
+  d.addEventListener('keydown', e => {
+    if (!recording || !e.isTrusted) return;
+    const el = e.target; if (!el.matches) return;
+    const fkey = /^F([1-9]|1[0-2])$/.test(e.key), esc = e.key === 'Escape';
+    const combo = (e.ctrlKey || e.altKey || e.metaKey) && e.key.length === 1; // mis. Ctrl+S
+    const enter = e.key === 'Enter' && el.matches('input');
+    if (!(fkey || esc || combo || enter)) return;
+    // nilai yang sedang diketik di field (event change belum terjadi); lewati bila tidak diubah user atau sudah tercatat
+    if (el.matches(TEXTY) && el.value !== el.__qaInit) {
+      const ts = typeStep(el, tabId, frame);
+      if (!dupType(ts)) add(ts);
+    }
+    const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean);
+    add(S({ action: 'press', selector: sel(el), value: [...mods, e.key.length === 1 ? e.key.toUpperCase() : e.key].join('+') }));
+  }, true);
+  d.addEventListener('focusin', e => { e.target.__qaInit = e.target.value; }, true); // nilai awal saat field difokus
+  d.addEventListener('dblclick', e => { // menggantikan dua langkah klik yang baru saja terekam
+    if (!recording || !e.isTrusted) return;
+    const el = e.target.closest?.('a,button,input,select,textarea,label,summary,[role=button]') || e.target;
+    const sl = sel(el);
+    for (let n = 0; n < 2; n++) {
+      const last = steps[steps.length - 1];
+      if (last && last.action === 'click' && last.selector === sl && (last.tab || 0) === tabId && (last.frame || '') === frame) steps.pop(); else break;
+    }
+    const lb = labelOf(el);
+    add(S({ action: 'dblclick', selector: sl, value: '', ...(lb && !/^(text|cell)=/.test(sl) ? { label: lb } : {}) }));
+  }, true);
+}
+function setRec(v) { recording = v; $('#rec').classList.toggle('on', v); $('#rec').textContent = v ? '■ Stop' : '● Rekam'; }
+function setAssert(v) { assertMode = v; $('#asrt').classList.toggle('on', v); }
+$('#rec').onclick = () => {
+  if (recording) return setRec(false);
+  let d; try { d = T(0).f.contentDocument; } catch {}
+  if (!base || !d || !d.location) return say('Buka URL dulu.');
+  if (!steps.length) add({ action: 'goto', selector: '', value: d.location.pathname + d.location.search });
+  tabs.forEach(t => { try { attach(t.f.contentDocument, t.id); } catch {} }); setRec(true);
+  say('Merekam. Lakukan tes di panel website.');
+};
+$('#asrt').onclick = () => {
+  if (!recording) return say('Mulai rekam dulu.');
+  setAssert(!assertMode); say(assertMode ? 'Klik elemen yang teksnya mau diverifikasi.' : '');
+};
+
+/* ---------- edit langkah ---------- */
+const ACTIONS = ['goto', 'click', 'dblclick', 'hover', 'dialog', 'type', 'select', 'press', 'assertText'];
+function render() {
+  box.innerHTML = '';
+  steps.forEach((s, i) => {
+    const r = document.createElement('div'), x = res[i];
+    r.className = 'step ' + (x ? (x.ok ? 'ok' : 'bad') : '');
+    if (x && !x.ok) r.title = x.err;
+    r.innerHTML = `<span title="${[s.tab ? 'tab ' + (s.tab + 1) : '', s.frame ? 'frame ' + s.frame : ''].filter(Boolean).join(', ')}">${i + 1}${s.tab ? '·T' + (s.tab + 1) : ''}${s.frame ? '·F' : ''}</span>
+      <select>${ACTIONS.map(a => `<option${a === s.action ? ' selected' : ''}>${a}</option>`).join('')}</select>
+      <input placeholder="${s.action === 'dialog' ? 'teks pesan (kosong = tak dicek)' : 'selector'}"><input placeholder="${s.action === 'dialog' ? 'accept / dismiss' : 'nilai'}">
+      <button title="naik">↑</button><button title="turun">↓</button><button title="hapus">✕</button>`;
+    const [sl, a, b, up, dn, del] = r.querySelectorAll('select,input,input,button,button,button');
+    a.value = s.selector; b.value = s.value;
+    if (s.sensitive) b.type = 'password';
+    sl.onchange = () => s.action = sl.value;
+    a.oninput = () => s.selector = a.value;
+    b.oninput = () => s.value = b.value;
+    const swap = j => { if (j >= 0 && j < steps.length) { [steps[i], steps[j]] = [steps[j], steps[i]]; res = []; render(); } };
+    up.onclick = () => swap(i - 1); dn.onclick = () => swap(i + 1);
+    del.onclick = () => { steps.splice(i, 1); res = []; render(); };
+    box.append(r);
+  });
+  $('#exp').disabled = !res.length;
+}
+$('#add').onclick = () => { steps.push({ action: 'click', selector: '', value: '' }); res = []; render(); };
+
+/* ---------- JSON: download, upload, gabung ---------- */
+const slug = s => (s || 'skenario').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'skenario';
+function dl(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+$('#dl').onclick = () => {
+  const name = $('#name').value || 'skenario';
+  dl(new Blob([JSON.stringify({ name, baseUrl: base, steps }, null, 2)], { type: 'application/json' }), slug(name) + '.qa.json');
+};
+function load(j) {
+  steps = j.steps.map(s => ({ ...s })); res = []; base = j.baseUrl || ''; urlIn.value = base;
+  $('#name').value = j.name || ''; curId = null; render(); drawList();
+  say(`Dimuat ${steps.length} langkah. Klik ▶ Jalankan.`);
+}
+async function readFiles(files) {
+  const out = [];
+  for (const file of files) {
+    try {
+      const j = JSON.parse(await file.text());
+      if (!Array.isArray(j.steps)) throw 0;
+      out.push(j);
+    } catch { say(`File "${file.name}" bukan skenario valid.`); return null; }
+  }
+  return out;
+}
+$('#up').onclick = () => $('#file').click();
+$('#merge').onclick = () => $('#mergefile').click();
+$('#file').onchange = async e => {
+  const js = await readFiles(e.target.files); e.target.value = '';
+  if (!js || !js.length) return;
+  load({ name: js.length === 1 ? js[0].name : '', baseUrl: js[0].baseUrl, steps: js.flatMap(j => j.steps) });
+  if (js.length > 1) say(`${js.length} file digabung jadi ${steps.length} langkah (urutan nama file). Isi nama lalu simpan.`);
+};
+$('#mergefile').onchange = async e => {
+  const js = await readFiles(e.target.files); e.target.value = '';
+  if (!js || !js.length) return;
+  steps.push(...js.flatMap(j => j.steps.map(s => ({ ...s }))));
+  if (!base && js[0].baseUrl) { base = js[0].baseUrl; urlIn.value = base; }
+  res = []; render(); say(`Digabung: sekarang ${steps.length} langkah.`);
+};
+
+/* ---------- jalankan ---------- */
+async function until(fn, ms = 5000) {
+  const t = Date.now();
+  for (;;) {
+    try { const v = fn(); if (v) return v; } catch {}
+    if (Date.now() - t > ms) return null;
+    await sleep(100);
+  }
+}
+function setVal(el, v) {
+  const w = el.ownerDocument.defaultView;
+  const proto = el.tagName === 'SELECT' ? w.HTMLSelectElement.prototype
+    : el.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); // works with React-controlled inputs
+  el.dispatchEvent(new w.Event('input', { bubbles: true }));
+  el.dispatchEvent(new w.Event('change', { bubbles: true }));
+}
+// ---- simulasi mouse: event JS + aturan CSS :hover (CSS tidak bisa dipicu event, jadi aturannya digandakan ke .__qa_hover) ----
+function fire(el, type, bubbles = true) {
+  const w = el.ownerDocument.defaultView, r = el.getBoundingClientRect();
+  const o = { bubbles, cancelable: true, view: w, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, buttons: /down/.test(type) ? 1 : 0 };
+  el.dispatchEvent(type.startsWith('pointer') ? new w.PointerEvent(type, { ...o, pointerType: 'mouse', isPrimary: true }) : new w.MouseEvent(type, o));
+}
+function injectHover(d) {
+  if (d.__qaHoverCss) return; d.__qaHoverCss = 1;
+  const walk = (rules, owner) => {
+    for (const r of [...rules]) {
+      if (r.cssRules && !r.selectorText) walk(r.cssRules, r);
+      else if (r.selectorText && r.selectorText.includes(':hover')) {
+        try { owner.insertRule(r.cssText.replace(/:hover/g, '.__qa_hover'), owner.cssRules.length); } catch {}
+      }
+    }
+  };
+  for (const sh of d.styleSheets) { try { walk(sh.cssRules, sh); } catch {} } // stylesheet domain lain tidak terbaca
+}
+function hoverCss(d, el, on) {
+  if (on) injectHover(d);
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) n.classList.toggle('__qa_hover', on);
+}
+async function hoverOn(el) {
+  const d = el.ownerDocument, prev = d.__qaHov;
+  if (prev && prev !== el && prev.isConnected) {
+    hoverCss(d, prev, false);
+    fire(prev, 'pointerout'); fire(prev, 'mouseout'); fire(prev, 'mouseleave', false);
+  }
+  hoverCss(d, el, true);
+  const chain = []; for (let n = el; n && n.nodeType === 1; n = n.parentElement) chain.unshift(n);
+  fire(el, 'pointerover'); fire(el, 'mouseover');
+  chain.forEach(n => { fire(n, 'pointerenter', false); fire(n, 'mouseenter', false); });
+  fire(el, 'pointermove'); fire(el, 'mousemove');
+  d.__qaHov = el; await sleep(350); // beri waktu animasi/penundaan sub menu
+}
+function reveal(el) { // jangan scrollIntoView: itu ikut menggeser halaman QA dan memindah posisi menu
+  try {
+    const w = el.ownerDocument.defaultView, r = el.getBoundingClientRect();
+    const dy = r.top < 0 ? r.top - 40 : r.bottom > w.innerHeight ? r.bottom - w.innerHeight + 40 : 0;
+    const dx = r.left < 0 ? r.left - 40 : r.right > w.innerWidth ? r.right - w.innerWidth + 40 : 0;
+    if (dx || dy) w.scrollBy(dx, dy);
+  } catch {}
+}
+const KEYS = { Enter: 13, Escape: 27, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, PageUp: 33, PageDown: 34, Home: 36, End: 35, Delete: 46, Backspace: 8 };
+function keyInfo(spec) { // 'F2', 'Escape', 'Ctrl+S', 'Alt+ArrowDown'
+  const parts = spec.split('+'), key = parts.pop(), mods = parts.map(x => x.toLowerCase());
+  const fm = /^F(\d{1,2})$/.exec(key);
+  const keyCode = fm ? 111 + +fm[1] : KEYS[key] ?? key.toUpperCase().charCodeAt(0);
+  const code = fm ? key : key.length === 1 ? (/[a-z]/i.test(key) ? 'Key' + key.toUpperCase() : /\d/.test(key) ? 'Digit' + key : '') : key;
+  const k = /^[a-z]$/i.test(key) && !mods.includes('shift') ? key.toLowerCase() : key;
+  return { key: k, code, keyCode, ctrlKey: mods.includes('ctrl'), altKey: mods.includes('alt'), shiftKey: mods.includes('shift'), metaKey: mods.includes('meta') };
+}
+// Handler lama (mis. ListData(event) untuk F2) mengecek event.keyCode/which, jadi keduanya diisi eksplisit.
+function pressKey(el, spec) {
+  const w = el.ownerDocument.defaultView, k = keyInfo(spec);
+  const mk = type => {
+    const ev = new w.KeyboardEvent(type, { key: k.key, code: k.code, bubbles: true, cancelable: true, view: w,
+      ctrlKey: k.ctrlKey, altKey: k.altKey, shiftKey: k.shiftKey, metaKey: k.metaKey });
+    for (const p of ['keyCode', 'which']) Object.defineProperty(ev, p, { get: () => k.keyCode });
+    if (type === 'keypress') Object.defineProperty(ev, 'charCode', { get: () => (k.key.length === 1 ? k.key.charCodeAt(0) : k.keyCode === 13 ? 13 : 0) });
+    return ev;
+  };
+  try { el.focus(); } catch {}
+  const ok = el.dispatchEvent(mk('keydown'));
+  const printable = k.key.length === 1 || k.key === 'Enter';
+  if (ok && printable) el.dispatchEvent(mk('keypress'));
+  if (ok && k.key === 'Enter' && el.form && el.matches('input,select')) el.form.requestSubmit(); // submit implisit
+  el.dispatchEvent(mk('keyup'));
+}
+async function exec(s, ctx = {}) {
+  if (s.action === 'dialog') { // jawabannya sudah dipasang sebelum langkah pemicu; di sini hanya memastikan dialog benar-benar muncul
+    const hit = await until(() => dlgSeen.find(x => x.expIdx === ctx.idx), 5000);
+    if (!hit) throw Error(`dialog ${s.kind || 'confirm'} tidak muncul` + (s.selector ? `: "${s.selector}"` : ''));
+    const norm = x => String(x).replace(/\s+/g, ' ').trim();
+    if (s.selector && norm(hit.text) !== norm(s.selector)) throw Error(`teks dialog "${hit.text}" berbeda dari yang diharapkan "${s.selector}"`);
+    return;
+  }
+  if (s.action === 'goto') {
+    if (!base) throw Error('baseUrl kosong');
+    const f0 = T(0).f, p = new Promise(r => f0.addEventListener('load', r, { once: true }));
+    go(base + s.value); await p; await settle(T(0)); return;
+  }
+  const tid = s.tab || 0;
+  const t = await until(() => T(tid));
+  if (!t) throw Error(`tab ${tid + 1} tidak ada`);
+  show(tid);
+  const d = () => { const top = t.f.contentDocument; return s.frame ? frameDoc(top, s.frame) : top; };
+  const hov = s.action === 'hover'; // hover: kalau elemen tak ada, dilewati (jangan menggagalkan skenario)
+  // jangan klik sebelum penangkap tab baru terpasang (dokumen baru yang masih dimuat)
+  const ready = x => x && (x.__qa || x.location.href === 'about:blank');
+  const el = await until(() => { const x = d(); return ready(x) && find(x, s.selector); }, hov ? 2500 : s.frame ? 15000 : 5000); // iframe/dialog perlu waktu dimuat
+  if (!el) {
+    if (hov) { ctx.note = 'elemen hover tidak ditemukan, dilewati'; return; }
+    throw Error(`elemen tidak ketemu${tid ? ' (tab ' + (tid + 1) + ')' : ''}: ` + s.selector);
+  }
+  if (hov) { reveal(el); await hoverOn(el); ctx.markEl = el; } // sorotan digambar saat snapshot
+  else if (s.action === 'click' || s.action === 'dblclick' || s.action === 'press') {
+    reveal(el);
+    if (!el.getClientRects().length) hoverCss(d(), el, true); // tersembunyi (menu CSS): munculkan dulu
+    if ($('#shot').checked) { const a = performance.now(); ctx.before = await shot(t, el); ctx.skip = (ctx.skip || 0) + performance.now() - a; } // sebelum aksi, elemen disorot
+    if (s.action === 'press') pressKey(el, s.value);
+    else {
+      const mouse = () => ['pointerover', 'mouseover', 'pointermove', 'mousemove', 'pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(x => fire(el, x));
+      mouse(); el.click();
+      if (s.action === 'dblclick') { mouse(); el.click(); fire(el, 'dblclick'); }
+    }
+  }
+  else if (s.action === 'type' || s.action === 'select') setVal(el, s.value);
+  else if (s.action === 'assertText') {
+    const ok = await until(() => { const e = find(d(), s.selector); return e && (e.innerText || e.value || '').includes(s.value); });
+    if (!ok) throw Error(`teks "${s.value}" tidak ada di ${s.selector}`);
+  } else throw Error('action tidak dikenal: ' + s.action);
+  await sleep(300); // beri kesempatan navigasi dimulai
+  // tunggu sampai halaman benar-benar selesai (tab bisa tertutup oleh klik tadi: window.close)
+  if (tabs.includes(t) && !(await settle(t))) ctx.note = (ctx.note ? ctx.note + '; ' : '') + 'halaman belum selesai dimuat setelah 15 dtk, lanjut';
+}
+/* ---------- screenshot: render ulang DOM halaman penuh, semua aset di-inline, 2x (HD) ---------- */
+let dataCache = new Map();
+function toData(url) {
+  let u = new URL(url);
+  if (u.origin === base) u = new URL(location.origin + u.pathname + u.search); // origin website target = lewat proxy
+  const key = u.href;
+  if (!dataCache.has(key)) dataCache.set(key, (async () => {
+    // domain lain: diambil server (browser terhalang CORS)
+    const r = await fetch(u.origin === location.origin ? u.href : '/__qa/api/fetch?u=' + encodeURIComponent(u.href));
+    if (!r.ok) throw Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    return await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = no; fr.readAsDataURL(blob); });
+  })().catch(() => ''));
+  return dataCache.get(key);
+}
+const URL_RE = /url\(\s*(['"]?)(?!data:|#)([^'")]+)\1\s*\)/gi;
+async function inlineUrls(css, baseUrl) {
+  const map = new Map();
+  await Promise.all([...css.matchAll(URL_RE)].map(async m => {
+    try { map.set(m[0], `url("${await toData(new URL(m[2], baseUrl).href)}")`); } catch {}
+  }));
+  return css.replace(URL_RE, m => map.get(m) || m);
+}
+async function collectCss(d) {
+  let out = '';
+  for (const sh of d.styleSheets) {
+    try {
+      if (sh.media.length && !/(^|,)\s*(all|screen)/i.test(sh.media.mediaText)) continue; // lewati stylesheet print
+      out += await inlineUrls([...sh.cssRules].map(r => r.cssText).join('\n'), sh.href || d.baseURI) + '\n';
+    } catch {} // stylesheet domain lain tidak terbaca
+  }
+  return out;
+}
+const snap = (f, markEl) => snapWin(f.contentWindow, 0, markEl);
+// Kotak yang punya scroll sendiri (panel pohon menu, grid ber-scroll) dibuka sementara supaya seluruh isinya ikut difoto.
+// Dipanggil dan dikembalikan dalam satu blok sinkron (ukur + clone), jadi tidak ada repaint yang terlihat di panel.
+function expandScrollers(d) {
+  const w = d.defaultView, todo = [];
+  for (const e of d.querySelectorAll('*')) {
+    if (/^(HTML|HEAD|TEXTAREA|SELECT|INPUT|IFRAME|FRAME|OBJECT|EMBED|CANVAS|SVG|SCRIPT|STYLE)$/i.test(e.tagName) || !e.style) continue;
+    const cs = w.getComputedStyle(e);
+    if (!/(auto|scroll)/.test(cs.overflowX + ' ' + cs.overflowY)) continue;
+    const tall = e.scrollHeight > e.clientHeight + 1, wide = e.scrollWidth > e.clientWidth + 1;
+    if (tall || wide) todo.push([e, tall, cs.position]);
+  }
+  const saved = todo.map(([e, tall, pos]) => {
+    const st = [e, e.getAttribute('style'), e.scrollTop, e.scrollLeft];
+    e.style.setProperty('overflow', 'visible', 'important');
+    if (tall) {
+      e.style.setProperty('height', 'auto', 'important'); e.style.setProperty('max-height', 'none', 'important');
+      if (pos === 'absolute' || pos === 'fixed') e.style.setProperty('bottom', 'auto', 'important');
+    }
+    return st;
+  });
+  const sx = w.scrollX, sy = w.scrollY;
+  return () => {
+    saved.forEach(([e, st, top, left]) => { st === null ? e.removeAttribute('style') : e.setAttribute('style', st); e.scrollTop = top; e.scrollLeft = left; });
+    w.scrollTo(sx, sy);
+  };
+}
+async function snapWin(w, depth = 0, markEl = null) {
+  const d = w.document, r0 = d.documentElement;
+  const layoutW = Math.max(1, r0.clientWidth || w.innerWidth); // lebar tata letak = lebar panel tanpa scrollbar
+  const undo = depth ? () => {} : expandScrollers(d);
+  let W = layoutW, H, markBox = null;
+  if (depth === 0) { // halaman penuh: lebar dan tinggi konten sebenarnya, bukan hanya yang terlihat di panel
+    W = Math.min(4000, Math.max(layoutW, r0.scrollWidth, d.body ? d.body.scrollWidth : 0));
+    H = Math.min(10000, Math.max(w.innerHeight, r0.scrollHeight, d.body ? d.body.scrollHeight : 0));
+  } else H = Math.min(5000, Math.max(w.innerHeight, r0.scrollHeight));
+  if (markEl && markEl.ownerDocument === d) { // posisi elemen yang disorot diukur pada tata letak yang sudah dibuka
+    const r = markEl.getBoundingClientRect();
+    if (r.width || r.height) {
+      let fixed = false;
+      for (let n = markEl; n && n.nodeType === 1; n = n.parentElement) if (w.getComputedStyle(n).position === 'fixed') { fixed = true; break; }
+      markBox = { x: fixed ? r.left : r.left + w.scrollX, y: fixed ? r.top : r.top + w.scrollY, w: r.width, h: r.height, fixed };
+    }
+  }
+  const root = r0.cloneNode(true);
+  undo();
+  if (markBox) {
+    const o = d.createElement('div');
+    o.setAttribute('style', `position:${markBox.fixed ? 'fixed' : 'absolute'};left:0;top:0;width:0;height:0;margin:0;padding:0;border:0;z-index:2147483647;pointer-events:none`);
+    o.innerHTML = `<div style="position:absolute;left:${markBox.x - 3}px;top:${markBox.y - 3}px;width:${markBox.w + 6}px;height:${markBox.h + 6}px;border:3px solid #e11d48;border-radius:4px;background:rgba(225,29,72,.14);box-sizing:border-box"></div>`;
+    root.append(o);
+  }
+  // nilai form saat ini, canvas
+  const live = [...d.querySelectorAll('input,textarea,select')], cp = [...root.querySelectorAll('input,textarea,select')];
+  live.forEach((el, i) => {
+    const c = cp[i]; if (!c) return;
+    if (el.tagName === 'TEXTAREA') c.textContent = el.value;
+    else if (el.tagName === 'SELECT') [...c.options].forEach((o, j) => o.toggleAttribute('selected', !!el.options[j]?.selected));
+    else { c.setAttribute('value', el.value); el.checked ? c.setAttribute('checked', '') : c.removeAttribute('checked'); }
+  });
+  const lc = [...d.querySelectorAll('canvas')];
+  [...root.querySelectorAll('canvas')].forEach((c, i) => {
+    try { const im = d.createElement('img'); im.src = lc[i].toDataURL(); im.width = lc[i].width; im.height = lc[i].height; c.replaceWith(im); } catch {}
+  });
+  // iframe bersarang (mis. isi <dialog>): dirender sendiri lalu dipasang sebagai gambar latar di tempat iframe-nya
+  if (depth < 3) {
+    const lf = [...d.querySelectorAll('iframe,frame')], cf = [...root.querySelectorAll('iframe,frame')];
+    await Promise.all(lf.map(async (ifr, i) => {
+      const c = cf[i]; if (!c) return;
+      try {
+        const iwin = ifr.contentWindow, rect = ifr.getBoundingClientRect();
+        if (!iwin || !rect.width || !rect.height || iwin.document.location.href === 'about:blank') return;
+        const inner = await snapWin(iwin, depth + 1, markEl), cs = w.getComputedStyle(ifr);
+        const ph = d.createElement('span');
+        if (c.id) ph.id = c.id; ph.className = c.className;
+        ph.setAttribute('style', (c.getAttribute('style') || '') + `;display:${cs.display === 'inline' ? 'inline-block' : cs.display};width:${rect.width}px;height:${rect.height}px;overflow:hidden;box-sizing:border-box;background:#fff url("${inner.img}") no-repeat -${inner.sx}px -${inner.sy}px / ${inner.W}px ${inner.H}px`);
+        c.replaceWith(ph);
+      } catch {} // iframe lintas domain: dikosongkan
+    }));
+  }
+  root.querySelectorAll('script,noscript,link,style,iframe,object,embed').forEach(e => e.remove());
+  // tag/atribut ber-namespace (o:p, xmlns:v) merusak XML
+  [...root.querySelectorAll('*')].forEach(e => {
+    [...e.attributes].forEach(a => { if (a.name.includes(':')) e.removeAttribute(a.name); });
+    if (e.tagName.includes(':')) e.replaceWith(...e.childNodes);
+  });
+  // gambar: <img>, <input type=image>, atribut background, style="...url()"
+  const base0 = d.baseURI, jobs = [];
+  root.querySelectorAll('img[src],input[type=image][src]').forEach(im => jobs.push((async () => {
+    const v = im.getAttribute('src'); im.removeAttribute('srcset'); im.removeAttribute('loading');
+    if (!v.startsWith('data:')) im.setAttribute('src', await toData(new URL(v, base0).href).catch(() => ''));
+  })()));
+  root.querySelectorAll('[background]').forEach(e => jobs.push((async () => {
+    const v = e.getAttribute('background'); e.removeAttribute('background');
+    e.style.backgroundImage = `url("${await toData(new URL(v, base0).href).catch(() => '')}")`;
+  })()));
+  root.querySelectorAll('[style*="url("]').forEach(e => jobs.push((async () => {
+    e.setAttribute('style', await inlineUrls(e.getAttribute('style'), base0));
+  })()));
+  const css = await collectCss(d);
+  await Promise.all(jobs);
+  // latar belakang halaman
+  const bgOf = el => { const c = w.getComputedStyle(el).backgroundColor; return c && c !== 'rgba(0, 0, 0, 0)' ? c : ''; };
+  const bg = bgOf(d.documentElement) || bgOf(d.body) || '#fff';
+  const head = d.createElement('style'); head.textContent = css;
+  (root.querySelector('head') || root.insertBefore(d.createElement('head'), root.firstChild)).append(head);
+  root.style.cssText += `;background:${bg};width:${layoutW}px;`;
+  root.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  const xhtml = new XMLSerializer().serializeToString(root).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><foreignObject x="0" y="0" width="${W}" height="${H}">${xhtml}</foreignObject></svg>`;
+  const img = new Image();
+  await new Promise((ok, no) => {
+    img.onload = ok; img.onerror = () => no(Error('render gagal'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+  let S = depth ? 1 : 2; if (W * H * S * S > 20e6) S = Math.max(.4, Math.sqrt(20e6 / (W * H))); // batasi piksel total
+  const c = document.createElement('canvas'); c.width = Math.round(W * S); c.height = Math.round(H * S);
+  const x = c.getContext('2d'); x.fillStyle = bg; x.fillRect(0, 0, c.width, c.height); x.scale(S, S); x.drawImage(img, 0, 0);
+  return { img: c.toDataURL('image/jpeg', .85), iw: c.width, ih: c.height, W, H, sx: w.scrollX, sy: w.scrollY };
+}
+// Gagal/timeout => { shotErr }, laporan tetap jalan tanpa gambar.
+async function shot(t, markEl) {
+  if (!$('#shot').checked) return null;
+  try {
+    const tb = t && tabs.includes(t) ? t : T(active) || T(0); // tab sudah tertutup: ambil tab aktif
+    await settle(tb, 15000, 150); // jangan memotret halaman yang masih dimuat
+    const f = tb.f;
+    return await Promise.race([snap(f, markEl), sleep(25000).then(() => { throw Error('timeout'); })]);
+  } catch (e) { return { shotErr: e.message }; }
+}
+$('#run').onclick = async () => {
+  if (!steps.length) return say('Belum ada langkah.');
+  setRec(false); setAssert(false); res = []; dataCache.clear();
+  base = base || (urlIn.value && new URL(urlIn.value).origin);
+  meta = { name: $('#name').value.trim() || 'skenario', base, start: Date.now() };
+  $('#run').disabled = true;
+  let failed = false; running = true; dlgQueue = []; dlgSeen = [];
+  for (let i = 0; i < steps.length; i++) {
+    const t0 = performance.now(); let err = ''; const ctx = { idx: i }; curCtx = ctx;
+    // langkah `dialog` yang menyusul langkah ini: jawabannya dipasang sekarang (confirm() dipanggil sinkron saat klik)
+    if (steps[i].action !== 'dialog') {
+      dlgQueue = [];
+      for (let j = i + 1; j < steps.length && steps[j].action === 'dialog'; j++) dlgQueue.push({ ...steps[j], step: j });
+    }
+    try { await exec(steps[i], ctx); } catch (e) { err = e.message; }
+    const ms = Math.round(performance.now() - t0 - (ctx.skip || 0));
+    const after = await shot(T(steps[i].tab || 0), ctx.markEl);
+    res[i] = { ok: !err, err, ms, note: ctx.note || '', before: ctx.before || null, ...after };
+    render();
+    if (err) { // tangkapan saat error = tampilan akhir
+      failed = true; meta.final = { img: res[i].img, iw: res[i].iw, ih: res[i].ih, shotErr: res[i].shotErr };
+      say(`GAGAL di langkah ${i + 1}: ${err}`); break;
+    }
+  }
+  if (!failed) { await sleep(800); meta.final = await shot(T(active) || T(0)); } // tampilan akhir setelah semua langkah
+  running = false; curCtx = null; meta.end = Date.now(); $('#run').disabled = false;
+  if (!failed) say(`LULUS: ${steps.length} langkah.`);
+};
+
+/* ---------- laporan ---------- */
+const I = {
+  id: { rep: 'Laporan Uji Skenario', scen: 'Skenario', target: 'Website target', time: 'Waktu uji', result: 'Hasil akhir',
+    pass: 'LULUS', fail: 'GAGAL', passed: 'Lulus', failed: 'Gagal', skipped: 'Dilewati', total: 'Total langkah',
+    steps: 'Langkah-langkah', err: 'Pesan error', noshot: 'Screenshot tidak tersedia.', dur: 'Durasi', loc: 'id-ID',
+    masked: 'nilai disamarkan', before: 'Sebelum klik (elemen yang diklik disorot)', after: 'Sesudah langkah', final: 'Tampilan akhir',
+    finalOk: 'Halaman setelah semua langkah selesai.', finalFail: 'Halaman saat pengujian berhenti karena ada langkah gagal.' },
+  en: { rep: 'Scenario Test Report', scen: 'Scenario', target: 'Target website', time: 'Test time', result: 'Overall result',
+    pass: 'PASSED', fail: 'FAILED', passed: 'Passed', failed: 'Failed', skipped: 'Skipped', total: 'Total steps',
+    steps: 'Steps', err: 'Error message', noshot: 'Screenshot not available.', dur: 'Duration', loc: 'en-US',
+    masked: 'value masked', before: 'Before click (clicked element highlighted)', after: 'After step', final: 'Final state',
+    finalOk: 'Page after all steps completed.', finalFail: 'Page when the test stopped because a step failed.' },
+};
+const D = {
+  id: { goto: (t, v) => `Buka halaman ${v}`, click: t => `Klik ${t}`, hover: t => `Arahkan kursor ke ${t}`, dblclick: t => `Klik dua kali ${t}`, type: (t, v) => `Isi ${t} dengan "${v}"`,
+    select: (t, v) => `Pilih "${v}" pada ${t}`, press: (t, v) => `Tekan tombol ${v} pada ${t}`,
+    assertText: (t, v) => `Verifikasi ${t} memuat teks "${v}"` },
+  en: { goto: (t, v) => `Open page ${v}`, click: t => `Click ${t}`, hover: t => `Hover over ${t}`, dblclick: t => `Double-click ${t}`, type: (t, v) => `Fill ${t} with "${v}"`,
+    select: (t, v) => `Select "${v}" in ${t}`, press: (t, v) => `Press ${v} key on ${t}`,
+    assertText: (t, v) => `Verify ${t} contains text "${v}"` },
+};
+function describe(s, lang) {
+  if (s.action === 'dialog') {
+    const k = s.kind || 'confirm', no = s.value === 'dismiss', pv = s.value.startsWith('accept:') ? s.value.slice(7) : '';
+    const tabf = (s.tab ? ` (tab ${s.tab + 1})` : '') + (s.frame ? ` [frame ${s.frame}]` : '');
+    if (lang === 'id') return `Dialog ${{ confirm: 'konfirmasi', alert: 'peringatan', prompt: 'isian' }[k]} "${s.selector}" dijawab ${no ? 'Batal' : 'OK'}${k === 'prompt' && !no ? ` (isi "${pv}")` : ''}${tabf}`;
+    return `${{ confirm: 'Confirm', alert: 'Alert', prompt: 'Prompt' }[k]} dialog "${s.selector}" answered ${no ? 'Cancel' : 'OK'}${k === 'prompt' && !no ? ` (input "${pv}")` : ''}${tabf}`;
+  }
+  const m = /^text=(.*)$/.exec(s.selector), c = /^cell=(.*)$/.exec(s.selector);
+  const t = m ? (lang === 'id' ? `tombol/tautan "${m[1]}"` : `button/link "${m[1]}"`)
+    : c ? (lang === 'id' ? `sel/baris "${c[1]}"` : `cell/row "${c[1]}"`)
+    : s.label ? (lang === 'id' ? `elemen "${s.label}" (${s.selector})` : `element "${s.label}" (${s.selector})`)
+    : (lang === 'id' ? 'elemen ' : 'element ') + s.selector;
+  const v = s.sensitive ? '••••••' : s.value;
+  const fn = D[lang][s.action];
+  const tab = (s.tab ? ` (tab ${s.tab + 1})` : '') + (s.frame ? ` [frame ${s.frame}]` : '');
+  return (fn ? fn(t, s.action === 'goto' ? meta.base + s.value : v) : `${s.action} ${s.selector} ${v}`) + tab;
+}
+function model(lang) {
+  const t = I[lang];
+  const list = steps.map((s, i) => {
+    const r = res[i];
+    return { n: i + 1, desc: describe(s, lang), st: !r ? 'skip' : r.ok ? 'pass' : 'fail',
+      err: r?.err || '', ms: r?.ms || 0, img: r?.img || '', iw: r?.iw, ih: r?.ih, shotErr: r?.shotErr, note: r?.note || '', before: r?.before || null };
+  });
+  const c = k => list.filter(x => x.st === k).length;
+  const when = new Date(meta.start).toLocaleString(t.loc);
+  const dur = Math.round(((meta.end || Date.now()) - meta.start) / 1000);
+  return { lang, t, title: meta.name, base: meta.base, when, dur, rows: list, final: meta.final || null,
+    pass: c('pass'), fail: c('fail'), skip: c('skip'), overall: c('fail') ? 'fail' : c('skip') ? 'fail' : 'pass' };
+}
+const noshot = (t, x) => t.noshot + (x && x.shotErr ? ` (${x.shotErr})` : '');
+const figHtml = (m, r) => {
+  const t = m.t; let h = '';
+  if (r.before) h += `<p><b>${t.before}</b></p>` + (r.before.img ? `<img src="${r.before.img}" alt="">` : `<small>${esc(noshot(t, r.before))}</small>`);
+  if (r.img) h += (r.before ? `<p><b>${t.after}</b></p>` : '') + `<img src="${r.img}" alt="Step ${r.n}">`;
+  else if (r.st !== 'skip') h += `<small>${esc(noshot(t, r))}</small>`;
+  return h;
+};
+const figMd = (m, r) => {
+  const t = m.t; let h = '';
+  if (r.before) h += `**${t.before}**\n\n` + (r.before.img ? `![](${r.before.img})` : `_${noshot(t, r.before)}_`) + '\n\n';
+  if (r.img) h += (r.before ? `**${t.after}**\n\n` : '') + `![Step ${r.n}](${r.img})`;
+  else if (r.st !== 'skip') h += `_${noshot(t, r)}_`;
+  return h;
+};
+const lab = (m, st) => m.t[{ pass: 'passed', fail: 'failed', skip: 'skipped' }[st]];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function toHtml(m) {
+  const t = m.t, col = { pass: '#1a7f37', fail: '#c62828', skip: '#777' };
+  return `<!doctype html><html lang="${m.lang}"><head><meta charset="utf-8"><title>${esc(t.rep)} - ${esc(m.title)}</title>
+<style>body{font:14px/1.5 system-ui,sans-serif;max-width:960px;margin:24px auto;padding:0 16px;color:#1a1a1a}
+h1{margin:0 0 8px}table.meta td{padding:2px 12px 2px 0;vertical-align:top}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-size:12px}
+section{border:1px solid #ddd;border-left:6px solid;border-radius:6px;padding:8px 12px;margin:12px 0;page-break-inside:avoid}
+section h3{margin:0 0 4px;font-size:15px}pre{background:#fbeaea;color:#8a1c1c;padding:6px;white-space:pre-wrap;margin:6px 0}
+img{max-width:100%;border:1px solid #ccc;margin-top:6px}small{color:#666}</style></head><body>
+<h1>${esc(t.rep)}</h1>
+<table class="meta">
+<tr><td><b>${t.scen}</b></td><td>${esc(m.title)}</td></tr>
+<tr><td><b>${t.target}</b></td><td>${esc(m.base)}</td></tr>
+<tr><td><b>${t.time}</b></td><td>${esc(m.when)} (${m.dur}s)</td></tr>
+<tr><td><b>${t.result}</b></td><td><span class="badge" style="background:${col[m.overall]}">${t[m.overall]}</span></td></tr>
+<tr><td><b>${t.total}</b></td><td>${m.rows.length} - ${t.passed}: ${m.pass}, ${t.failed}: ${m.fail}, ${t.skipped}: ${m.skip}</td></tr>
+</table>
+<h2>${t.steps}</h2>
+${m.rows.map(r => `<section style="border-left-color:${col[r.st]}"><h3>${r.n}. ${esc(r.desc)}
+<span class="badge" style="background:${col[r.st]}">${lab(m, r.st)}</span></h3>
+${r.err ? `<pre>${t.err}: ${esc(r.err)}</pre>` : ''}<small>${t.dur}: ${r.ms} ms</small><br>
+${r.note ? `<small>${esc(r.note)}</small><br>` : ''}${figHtml(m, r)}</section>`).join('\n')}
+${m.final ? `<h2>${t.final}</h2><p>${m.overall === 'pass' ? t.finalOk : t.finalFail}</p>${m.final.img ? `<img src="${m.final.img}" alt="${t.final}">` : `<small>${esc(noshot(t, m.final))}</small>`}` : ''}
+</body></html>`;
+}
+function toMd(m) {
+  const t = m.t, ic = { pass: '✅', fail: '❌', skip: '⏭️' };
+  return `# ${t.rep}
+
+- **${t.scen}:** ${m.title}
+- **${t.target}:** ${m.base}
+- **${t.time}:** ${m.when} (${m.dur}s)
+- **${t.result}:** ${ic[m.overall]} **${t[m.overall]}**
+- **${t.total}:** ${m.rows.length} (${t.passed}: ${m.pass}, ${t.failed}: ${m.fail}, ${t.skipped}: ${m.skip})
+
+## ${t.steps}
+
+${m.rows.map(r => `### ${r.n}. ${r.desc} - ${ic[r.st]} ${lab(m, r.st)}
+
+${r.err ? `> ${t.err}: ${r.err.replace(/\n/g, ' ')}\n\n` : ''}${t.dur}: ${r.ms} ms
+
+${r.note ? `_${r.note}_\n\n` : ''}${figMd(m, r)}
+`).join('\n')}${m.final ? `
+## ${t.final}
+
+${m.overall === 'pass' ? t.finalOk : t.finalFail}
+
+${m.final.img ? `![${t.final}](${m.final.img})` : `_${noshot(t, m.final)}_`}
+` : ''}`;
+}
+async function toDocx(m) {
+  const t = m.t, z = new JSZip(), rels = [];
+  const x = s => esc(String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''));
+  const p = (txt, o = {}) => `<w:p><w:r><w:rPr>${o.b ? '<w:b/>' : ''}${o.c ? `<w:color w:val="${o.c}"/>` : ''}${o.sz ? `<w:sz w:val="${o.sz}"/>` : ''}</w:rPr><w:t xml:space="preserve">${x(txt)}</w:t></w:r></w:p>`;
+  const pic = (src, iw, ih, label) => {
+    const k = rels.length + 1, cx = 5486400, cy = Math.round(cx * ih / iw); // lebar 6 inci
+    z.file(`word/media/image${k}.jpg`, src.split(',')[1], { base64: true });
+    rels.push(`<Relationship Id="rId${k}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${k}.jpg"/>`);
+    return `<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${k}" name="${x(label)}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${k}" name="image${k}.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId${k}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  };
+  const col = { pass: '1A7F37', fail: 'C62828', skip: '777777' };
+  let body = p(t.rep, { b: 1, sz: 40 }) + p(`${t.scen}: ${m.title}`) + p(`${t.target}: ${m.base}`) +
+    p(`${t.time}: ${m.when} (${m.dur}s)`) + p(`${t.result}: ${t[m.overall]}`, { b: 1, c: col[m.overall] }) +
+    p(`${t.total}: ${m.rows.length} (${t.passed}: ${m.pass}, ${t.failed}: ${m.fail}, ${t.skipped}: ${m.skip})`) +
+    p(t.steps, { b: 1, sz: 32 });
+  m.rows.forEach(r => {
+    body += p(`${r.n}. ${r.desc} - ${lab(m, r.st)}`, { b: 1, c: col[r.st] });
+    if (r.err) body += p(`${t.err}: ${r.err}`, { c: col.fail });
+    body += p(`${t.dur}: ${r.ms} ms`, { sz: 18 });
+    if (r.note) body += p(r.note, { sz: 18 });
+    if (r.before) body += p(t.before, { b: 1, sz: 20 }) + (r.before.img ? pic(r.before.img, r.before.iw, r.before.ih, `Step ${r.n} before`) : p(noshot(t, r.before), { sz: 18 }));
+    if (r.img) body += (r.before ? p(t.after, { b: 1, sz: 20 }) : '') + pic(r.img, r.iw, r.ih, `Step ${r.n}`);
+    else if (r.st !== 'skip') body += p(noshot(t, r), { sz: 18 });
+  });
+  if (m.final) {
+    body += p(t.final, { b: 1, sz: 32 }) + p(m.overall === 'pass' ? t.finalOk : t.finalFail);
+    body += m.final.img ? pic(m.final.img, m.final.iw, m.final.ih, t.final) : p(noshot(t, m.final), { sz: 18 });
+  }
+  const H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  z.file('[Content_Types].xml', `${H}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
+  z.file('_rels/.rels', `${H}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+  z.file('word/_rels/document.xml.rels', `${H}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join('')}</Relationships>`);
+  z.file('word/document.xml', `${H}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body}</w:body></w:document>`);
+  return z.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+$('#exp').onclick = async () => {
+  if (!res.length) return;
+  const m = model($('#lang').value), fmt = $('#fmt').value, name = slug(m.title) + '-hasil';
+  if (fmt === 'html') dl(new Blob([toHtml(m)], { type: 'text/html' }), name + '.html');
+  else if (fmt === 'md') dl(new Blob([toMd(m)], { type: 'text/markdown' }), name + '.md');
+  else if (fmt === 'docx') dl(await toDocx(m), name + '.docx');
+  else { // shortcut: PDF lewat dialog cetak browser ("Simpan sebagai PDF"); upgrade ke PDF sisi server bila perlu satu klik
+    const w = open('', '_blank');
+    if (!w) return say('Popup diblokir. Izinkan popup, lalu coba lagi.');
+    w.document.write(toHtml(m)); w.document.close(); setTimeout(() => w.print(), 600);
+  }
+};
+
+mkTab(0);
+boot();
+</script>
+</body>
+</html>

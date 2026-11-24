@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/__qa/api/:r", "destination": "/api/qa-app?r=:r" },
+    { "source": "/:path*", "destination": "/api/qa-proxy?p=/:path*" }
+  ]
+}
